@@ -32,6 +32,7 @@ export default class QRCanvas {
   _options: RequiredOptions;
   _qr?: QRCode;
   _image?: HTMLImageElement;
+  _isImageOnError?: boolean;
 
   //TODO don't pass all options to this class
   constructor(options: RequiredOptions) {
@@ -39,6 +40,7 @@ export default class QRCanvas {
     this._canvas.width = options.width;
     this._canvas.height = options.height;
     this._options = options;
+    this._isImageOnError = false;
   }
 
   get context(): CanvasRenderingContext2D | null {
@@ -79,19 +81,23 @@ export default class QRCanvas {
     this._qr = qr;
 
     if (this._options.image) {
-      await this.loadImage();
-      if (!this._image) return;
-      const { imageOptions, qrOptions } = this._options;
-      const coverLevel = imageOptions.imageSize * errorCorrectionPercents[qrOptions.errorCorrectionLevel];
-      const maxHiddenDots = Math.floor(coverLevel * count * count);
+      await this.loadImage()
+        .then(() => {
+          if (this._image) {
+            const { imageOptions, qrOptions } = this._options;
+            const coverLevel = imageOptions.imageSize * errorCorrectionPercents[qrOptions.errorCorrectionLevel];
+            const maxHiddenDots = Math.floor(coverLevel * count * count);
 
-      drawImageSize = calculateImageSize({
-        originalWidth: this._image.width,
-        originalHeight: this._image.height,
-        maxHiddenDots,
-        maxHiddenAxisDots: count - 14,
-        dotSize
-      });
+            drawImageSize = calculateImageSize({
+              originalWidth: this._image.width,
+              originalHeight: this._image.height,
+              maxHiddenDots,
+              maxHiddenAxisDots: count - 14,
+              dotSize
+            });
+          }
+        })
+        .catch(() => console.error("QRCanvas: image couldn't be loaded"));
     }
 
     this.clear();
@@ -367,8 +373,13 @@ export default class QRCanvas {
         image.crossOrigin = options.imageOptions.crossOrigin;
       }
 
-      this._image = image;
+      image.onerror = () => {
+        this._isImageOnError = true;
+        return reject("Image couldn't be loaded");
+      };
       image.onload = (): void => {
+        this._isImageOnError = false;
+        this._image = image;
         resolve();
       };
       image.src = options.image;
